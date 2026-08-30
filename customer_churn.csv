@@ -1,0 +1,21 @@
+customer_id,gender,city,tenure_months,plan_type,monthly_charges,contract_type,payment_method,monthly_usage_hours,login_frequency,support_tickets,payment_delays,avg_session_minutes,churn
+1,Male,Amritsar,5,Basic,499,Monthly,UPI,10,8,4,2,15,1
+2,Female,Ludhiana,24,Premium,1199,Yearly,Card,30,25,1,0,35,0
+3,Male,Delhi,8,Basic,450,Monthly,Cash,8,6,5,3,12,1
+4,Female,Chandigarh,36,Premium,1250,Yearly,Card,35,30,0,0,40,0
+5,Male,Amritsar,12,Standard,799,Monthly,UPI,15,12,3,1,20,1
+6,Female,Jalandhar,48,Premium,1299,Yearly,Net Banking,38,32,1,0,42,0
+7,Male,Delhi,3,Basic,499,Monthly,Wallet,7,5,6,3,10,1
+8,Female,Pune,30,Standard,799,Quarterly,Card,25,20,2,0,30,0
+9,Male,Mumbai,6,Basic,520,Monthly,Cash,9,7,4,2,14,1
+10,Female,Amritsar,42,Premium,1200,Yearly,UPI,40,35,0,0,45,0
+11,Male,Ludhiana,10,Standard,799,Monthly,Wallet,13,10,3,2,18,1
+12,Female,Delhi,28,Standard,820,Quarterly,Card,27,23,1,0,32,0
+13,Male,Jalandhar,4,Basic,480,Monthly,Cash,6,5,5,3,11,1
+14,Female,Mumbai,52,Premium,1350,Yearly,Card,42,37,0,0,48,0
+15,Male,Chandigarh,15,Standard,850,Monthly,UPI,17,13,3,1,22,1
+16,Female,Pune,40,Premium,1250,Yearly,Net Banking,34,29,1,0,39,0
+17,Male,Amritsar,7,Basic,510,Monthly,Wallet,9,6,4,2,13,1
+18,Female,Delhi,32,Standard,810,Quarterly,Card,28,24,1,0,33,0
+19,Male,Ludhiana,2,Basic,450,Monthly,Cash,5,4,6,3,9,1
+20,Female,Chandigarh,45,Premium,1300,Yearly,UPI,39,34,0,0,44,0
