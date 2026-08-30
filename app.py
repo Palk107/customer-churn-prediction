@@ -1,8 +1,3 @@
-# ============================================================
-# CUSTOMER CHURN PREDICTION & RETENTION ANALYTICS
-# 45-DAY DATA SCIENCE TRAINING PROJECT
-# ============================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,229 +18,84 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
     roc_auc_score,
-    confusion_matrix,
-    classification_report
+    confusion_matrix
 )
 
 from sklearn.inspection import permutation_importance
 
 
-# ============================================================
+# =========================================================
 # PAGE CONFIGURATION
-# ============================================================
+# =========================================================
 
 st.set_page_config(
-    page_title="Customer Churn Analytics",
+    page_title="Customer Churn Prediction",
     page_icon="📊",
     layout="wide"
 )
 
 
-# ============================================================
-# CUSTOM CSS
-# ============================================================
-
-st.markdown("""
-<style>
-
-.main-title {
-    font-size: 38px;
-    font-weight: 700;
-}
-
-.subtitle {
-    font-size: 18px;
-    color: #666666;
-}
-
-.section-title {
-    font-size: 25px;
-    font-weight: 600;
-}
-
-div[data-testid="stMetric"] {
-    border: 1px solid #dddddd;
-    padding: 15px;
-    border-radius: 10px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-# ============================================================
+# =========================================================
 # LOAD DATA
-# ============================================================
+# =========================================================
 
 @st.cache_data
 def load_data():
 
-    data = pd.read_csv("customer_churn.csv")
+    df = pd.read_csv("Telco-Customer-Churn.csv")
 
-    # Remove duplicate records
-    data = data.drop_duplicates()
+    # Remove unnecessary ID
+    df = df.drop(columns=["customerID"], errors="ignore")
 
-    return data
-
-
-try:
-
-    df = load_data()
-
-except FileNotFoundError:
-
-    st.error(
-        "customer_churn.csv was not found. "
-        "Make sure it is in the same folder as app.py."
+    # TotalCharges sometimes contains blank values
+    df["TotalCharges"] = pd.to_numeric(
+        df["TotalCharges"],
+        errors="coerce"
     )
 
-    st.stop()
-
-
-# ============================================================
-# BASIC DATA VALIDATION
-# ============================================================
-
-required_columns = [
-    "customer_id",
-    "gender",
-    "city",
-    "tenure_months",
-    "plan_type",
-    "monthly_charges",
-    "contract_type",
-    "payment_method",
-    "monthly_usage_hours",
-    "login_frequency",
-    "support_tickets",
-    "churn"
-]
-
-missing_columns = [
-    column for column in required_columns
-    if column not in df.columns
-]
-
-if missing_columns:
-
-    st.error(
-        "The following required columns are missing from "
-        "customer_churn.csv:"
+    # Fill missing numerical values
+    df["TotalCharges"] = df["TotalCharges"].fillna(
+        df["TotalCharges"].median()
     )
 
-    st.write(missing_columns)
-
-    st.stop()
+    return df
 
 
-# ============================================================
-# DATA CLEANING
-# ============================================================
-
-# Fill numerical missing values
-
-numeric_columns = df.select_dtypes(
-    include=np.number
-).columns
-
-for column in numeric_columns:
-
-    df[column] = df[column].fillna(
-        df[column].median()
-    )
+df = load_data()
 
 
-# Fill categorical missing values
-
-categorical_columns = df.select_dtypes(
-    include=["object"]
-).columns
-
-for column in categorical_columns:
-
-    if not df[column].mode().empty:
-
-        df[column] = df[column].fillna(
-            df[column].mode()[0]
-        )
-
-
-# ============================================================
-# TARGET CLEANING
-# ============================================================
-
-# Convert churn into 0 and 1 if required
-
-if df["churn"].dtype == "object":
-
-    churn_mapping = {
-        "Yes": 1,
-        "No": 0,
-        "yes": 1,
-        "no": 0,
-        "Churn": 1,
-        "Stay": 0,
-        "Stayed": 0,
-        "Churned": 1
-    }
-
-    df["churn"] = df["churn"].map(churn_mapping)
-
-
-df["churn"] = pd.to_numeric(
-    df["churn"],
-    errors="coerce"
-)
-
-df = df.dropna(
-    subset=["churn"]
-)
-
-df["churn"] = df["churn"].astype(int)
-
-
-# ============================================================
+# =========================================================
 # FEATURE ENGINEERING
-# ============================================================
+# =========================================================
 
-# Customer Lifetime Value
-
-df["customer_lifetime_value"] = (
-    df["monthly_charges"] *
-    df["tenure_months"]
+df["AverageMonthlySpend"] = (
+    df["TotalCharges"] /
+    df["tenure"].replace(0, 1)
 )
 
-
-# Support tickets per month
-
-df["support_tickets_per_month"] = (
-    df["support_tickets"] /
-    df["tenure_months"].replace(0, 1)
+df["TotalServices"] = (
+    (df["PhoneService"] == "Yes").astype(int)
+    + (df["OnlineSecurity"] == "Yes").astype(int)
+    + (df["OnlineBackup"] == "Yes").astype(int)
+    + (df["DeviceProtection"] == "Yes").astype(int)
+    + (df["TechSupport"] == "Yes").astype(int)
+    + (df["StreamingTV"] == "Yes").astype(int)
+    + (df["StreamingMovies"] == "Yes").astype(int)
 )
 
-
-# Usage per login
-
-df["usage_per_login"] = (
-    df["monthly_usage_hours"] /
-    df["login_frequency"].replace(0, 1)
-)
+# Convert target
+df["Churn"] = df["Churn"].map({
+    "Yes": 1,
+    "No": 0
+})
 
 
-# ============================================================
-# FEATURES AND TARGET
-# ============================================================
+# =========================================================
+# MACHINE LEARNING DATA
+# =========================================================
 
-X = df.drop(
-    columns=["customer_id", "churn"]
-)
-
-y = df["churn"]
-
-
-# ============================================================
-# IDENTIFY FEATURE TYPES
-# ============================================================
+X = df.drop(columns=["Churn"])
+y = df["Churn"]
 
 categorical_features = X.select_dtypes(
     include=["object"]
@@ -256,9 +106,9 @@ numerical_features = X.select_dtypes(
 ).columns.tolist()
 
 
-# ============================================================
+# =========================================================
 # PREPROCESSING
-# ============================================================
+# =========================================================
 
 preprocessor = ColumnTransformer(
 
@@ -266,28 +116,24 @@ preprocessor = ColumnTransformer(
 
         (
             "numeric",
-
             StandardScaler(),
-
             numerical_features
         ),
 
         (
             "categorical",
-
             OneHotEncoder(
                 handle_unknown="ignore"
             ),
-
             categorical_features
         )
     ]
 )
 
 
-# ============================================================
-# TRAIN-TEST SPLIT
-# ============================================================
+# =========================================================
+# TRAIN TEST SPLIT
+# =========================================================
 
 X_train, X_test, y_train, y_test = train_test_split(
 
@@ -302,67 +148,61 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 
-# ============================================================
+# =========================================================
 # MACHINE LEARNING MODELS
-# ============================================================
+# =========================================================
 
 models = {
 
     "Logistic Regression":
         LogisticRegression(
-            max_iter=1000,
-            class_weight="balanced"
+            max_iter=1000
         ),
 
     "Decision Tree":
         DecisionTreeClassifier(
-            random_state=42,
-            class_weight="balanced",
-            max_depth=8
+            max_depth=8,
+            random_state=42
         ),
 
     "Random Forest":
         RandomForestClassifier(
-            n_estimators=150,
-            random_state=42,
-            class_weight="balanced",
-            max_depth=10
+            n_estimators=200,
+            max_depth=10,
+            random_state=42
         ),
 
     "Gradient Boosting":
         GradientBoostingClassifier(
-            n_estimators=100,
+            n_estimators=120,
             random_state=42
         )
 }
 
 
-# ============================================================
-# TRAIN ALL MODELS
-# ============================================================
+# =========================================================
+# TRAIN MODELS
+# =========================================================
 
 trained_models = {}
 
 results = []
 
 
-for model_name, model in models.items():
+for name, model in models.items():
 
-    pipeline = Pipeline(
+    pipeline = Pipeline([
 
-        steps=[
+        (
+            "preprocessor",
+            preprocessor
+        ),
 
-            (
-                "preprocessor",
-                preprocessor
-            ),
-
-            (
-                "model",
-                model
-            )
-        ]
-    )
+        (
+            "model",
+            model
+        )
+    ])
 
     pipeline.fit(
         X_train,
@@ -377,73 +217,54 @@ for model_name, model in models.items():
         X_test
     )[:, 1]
 
-
-    accuracy = accuracy_score(
-        y_test,
-        predictions
-    )
-
-    precision = precision_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    recall = recall_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    f1 = f1_score(
-        y_test,
-        predictions,
-        zero_division=0
-    )
-
-    try:
-
-        roc_auc = roc_auc_score(
-            y_test,
-            probabilities
-        )
-
-    except:
-
-        roc_auc = 0
-
-
     results.append({
 
-        "Model": model_name,
+        "Model": name,
 
-        "Accuracy": accuracy,
+        "Accuracy":
+            accuracy_score(
+                y_test,
+                predictions
+            ),
 
-        "Precision": precision,
+        "Precision":
+            precision_score(
+                y_test,
+                predictions,
+                zero_division=0
+            ),
 
-        "Recall": recall,
+        "Recall":
+            recall_score(
+                y_test,
+                predictions,
+                zero_division=0
+            ),
 
-        "F1 Score": f1,
+        "F1 Score":
+            f1_score(
+                y_test,
+                predictions,
+                zero_division=0
+            ),
 
-        "ROC-AUC": roc_auc
+        "ROC-AUC":
+            roc_auc_score(
+                y_test,
+                probabilities
+            )
     })
 
+    trained_models[name] = pipeline
 
-    trained_models[model_name] = pipeline
-
-
-# ============================================================
-# MODEL COMPARISON
-# ============================================================
 
 results_df = pd.DataFrame(
     results
-)
-
-results_df = results_df.sort_values(
-    by="ROC-AUC",
+).sort_values(
+    "ROC-AUC",
     ascending=False
 )
+
 
 best_model_name = results_df.iloc[0]["Model"]
 
@@ -452,14 +273,12 @@ best_model = trained_models[
 ]
 
 
-# ============================================================
+# =========================================================
 # SIDEBAR
-# ============================================================
+# =========================================================
 
-st.sidebar.title("📊 Churn Analytics")
-
-st.sidebar.write(
-    "Customer Churn Prediction & Retention Analytics"
+st.sidebar.title(
+    "📊 Churn Analytics"
 )
 
 page = st.sidebar.radio(
@@ -485,43 +304,40 @@ page = st.sidebar.radio(
         "💡 Business Recommendations",
 
         "📋 Customer Data"
+
     ]
 )
 
 
-# ============================================================
+# =========================================================
 # HEADER
-# ============================================================
+# =========================================================
 
-st.markdown(
-    '<p class="main-title">'
-    'Customer Churn Prediction & Retention Analytics'
-    '</p>',
-    unsafe_allow_html=True
+st.title(
+    "📊 Customer Churn Prediction & Retention Analytics"
 )
 
-st.markdown(
-    '<p class="subtitle">'
-    'End-to-end Data Science and Machine Learning Project'
-    '</p>',
-    unsafe_allow_html=True
+st.caption(
+    "45-Day Data Science Training Capstone Project"
 )
 
 st.divider()
 
 
-# ============================================================
-# 1. DASHBOARD
-# ============================================================
+# =========================================================
+# DASHBOARD
+# =========================================================
 
 if page == "🏠 Dashboard":
 
-    st.header("🏠 Project Dashboard")
+    st.header(
+        "🏠 Project Dashboard"
+    )
 
     total_customers = len(df)
 
     churned_customers = int(
-        df["churn"].sum()
+        df["Churn"].sum()
     )
 
     retained_customers = (
@@ -531,75 +347,58 @@ if page == "🏠 Dashboard":
 
     churn_rate = (
         churned_customers /
-        total_customers
-    ) * 100
+        total_customers *
+        100
+    )
 
-
-    # Metrics
 
     col1, col2, col3, col4 = st.columns(4)
 
 
-    with col1:
+    col1.metric(
+        "👥 Total Customers",
+        total_customers
+    )
 
-        st.metric(
-            "👥 Total Customers",
-            total_customers
-        )
+    col2.metric(
+        "⚠️ Churned Customers",
+        churned_customers
+    )
 
+    col3.metric(
+        "✅ Retained Customers",
+        retained_customers
+    )
 
-    with col2:
-
-        st.metric(
-            "⚠️ Churned Customers",
-            churned_customers
-        )
-
-
-    with col3:
-
-        st.metric(
-            "✅ Retained Customers",
-            retained_customers
-        )
-
-
-    with col4:
-
-        st.metric(
-            "📉 Churn Rate",
-            f"{churn_rate:.2f}%"
-        )
+    col4.metric(
+        "📉 Churn Rate",
+        f"{churn_rate:.2f}%"
+    )
 
 
     st.divider()
 
 
-    # Churn distribution
-
     col1, col2 = st.columns(2)
 
 
+    # Churn distribution
     with col1:
 
         st.subheader(
             "Customer Churn Distribution"
         )
 
-        churn_counts = df["churn"].value_counts()
-
-        labels = ["Retained", "Churned"]
-
-        values = [
-            churn_counts.get(0, 0),
-            churn_counts.get(1, 0)
-        ]
+        counts = df["Churn"].value_counts()
 
         fig, ax = plt.subplots()
 
         ax.bar(
-            labels,
-            values
+            ["Retained", "Churned"],
+            [
+                counts.get(0, 0),
+                counts.get(1, 0)
+            ]
         )
 
         ax.set_ylabel(
@@ -607,25 +406,21 @@ if page == "🏠 Dashboard":
         )
 
         ax.set_title(
-            "Churn vs Retained Customers"
+            "Churn vs Retained"
         )
 
         st.pyplot(fig)
 
 
+    # Contract
     with col2:
 
         st.subheader(
-            "Customers by Plan Type"
-        )
-
-        plan_counts = (
-            df["plan_type"]
-            .value_counts()
+            "Customers by Contract"
         )
 
         st.bar_chart(
-            plan_counts
+            df["Contract"].value_counts()
         )
 
 
@@ -636,85 +431,59 @@ if page == "🏠 Dashboard":
         "🤖 Machine Learning Summary"
     )
 
-
     col1, col2, col3 = st.columns(3)
 
+    col1.metric(
+        "Models Trained",
+        len(models)
+    )
 
-    with col1:
+    col2.metric(
+        "Best Model",
+        best_model_name
+    )
 
-        st.metric(
-            "Models Trained",
-            len(models)
-        )
-
-
-    with col2:
-
-        st.metric(
-            "Best Model",
-            best_model_name
-        )
-
-
-    with col3:
-
-        best_auc = results_df.iloc[0]["ROC-AUC"]
-
-        st.metric(
-            "Best ROC-AUC",
-            f"{best_auc:.3f}"
-        )
-
-
-    st.info(
-        "The project follows an end-to-end workflow: "
-        "Data Cleaning → EDA → Feature Engineering → "
-        "Model Training → Evaluation → Prediction → "
-        "Risk Segmentation → Business Recommendations."
+    col3.metric(
+        "Best ROC-AUC",
+        f"{results_df.iloc[0]['ROC-AUC']:.3f}"
     )
 
 
-# ============================================================
-# 2. DATA PREPARATION
-# ============================================================
+    st.info(
+        "Complete workflow: "
+        "Data Cleaning → EDA → Feature Engineering → "
+        "Machine Learning → Model Evaluation → "
+        "Feature Importance → Risk Segmentation → "
+        "Business Recommendations."
+    )
+
+
+# =========================================================
+# DATA PREPARATION
+# =========================================================
 
 elif page == "🧹 Data Preparation":
 
     st.header(
-        "🧹 Data Collection & Preparation"
+        "🧹 Data Preparation"
     )
-
-    st.write(
-        "This section shows the basic data preparation "
-        "performed before machine learning."
-    )
-
 
     col1, col2, col3 = st.columns(3)
 
+    col1.metric(
+        "Rows",
+        df.shape[0]
+    )
 
-    with col1:
+    col2.metric(
+        "Columns",
+        df.shape[1]
+    )
 
-        st.metric(
-            "Rows",
-            df.shape[0]
-        )
-
-
-    with col2:
-
-        st.metric(
-            "Columns",
-            df.shape[1]
-        )
-
-
-    with col3:
-
-        st.metric(
-            "Duplicate Rows",
-            df.duplicated().sum()
-        )
+    col3.metric(
+        "Missing Values",
+        int(df.isnull().sum().sum())
+    )
 
 
     st.subheader(
@@ -722,74 +491,50 @@ elif page == "🧹 Data Preparation":
     )
 
     st.dataframe(
-        df.head(10),
+        df.head(15),
         use_container_width=True
     )
 
 
     st.subheader(
-        "Missing Values"
+        "Dataset Information"
     )
 
-    missing = df.isnull().sum()
+    info_df = pd.DataFrame({
 
-    missing_df = pd.DataFrame({
+        "Column":
+            df.columns,
 
-        "Column": missing.index,
+        "Data Type":
+            df.dtypes.astype(str),
 
-        "Missing Values": missing.values
+        "Missing Values":
+            df.isnull().sum().values
+
     })
 
     st.dataframe(
-        missing_df,
+        info_df,
         use_container_width=True
     )
 
 
     st.subheader(
-        "Data Types"
-    )
-
-    dtype_df = pd.DataFrame({
-
-        "Column": df.columns,
-
-        "Data Type": [
-            str(dtype)
-            for dtype in df.dtypes
-        ]
-    })
-
-    st.dataframe(
-        dtype_df,
-        use_container_width=True
-    )
-
-
-    st.subheader(
-        "Engineered Features"
+        "⚙️ Feature Engineering"
     )
 
     st.write(
-        """
-        **Customer Lifetime Value**
+        "• Average Monthly Spend = Total Charges ÷ Tenure"
+    )
 
-        Monthly Charges × Tenure
-
-        **Support Tickets per Month**
-
-        Support Tickets ÷ Tenure
-
-        **Usage per Login**
-
-        Monthly Usage Hours ÷ Login Frequency
-        """
+    st.write(
+        "• Total Services = Number of subscribed services"
     )
 
 
-# ============================================================
-# 3. EXPLORATORY DATA ANALYSIS
-# ============================================================
+# =========================================================
+# EDA
+# =========================================================
 
 elif page == "📈 Exploratory Data Analysis":
 
@@ -797,21 +542,16 @@ elif page == "📈 Exploratory Data Analysis":
         "📈 Exploratory Data Analysis"
     )
 
-    st.write(
-        "EDA helps identify patterns and relationships "
-        "between customer characteristics and churn."
-    )
-
-
-    # Churn by contract
 
     st.subheader(
-        "Churn Rate by Contract Type"
+        "Churn by Contract Type"
     )
 
     contract_churn = (
-        df.groupby("contract_type")["churn"]
-        .mean() * 100
+        df.groupby("Contract")["Churn"]
+        .mean()
+        .sort_values(ascending=False)
+        * 100
     )
 
     st.bar_chart(
@@ -819,31 +559,31 @@ elif page == "📈 Exploratory Data Analysis":
     )
 
 
-    # Churn by plan
-
     st.subheader(
-        "Churn Rate by Plan Type"
+        "Churn by Internet Service"
     )
 
-    plan_churn = (
-        df.groupby("plan_type")["churn"]
-        .mean() * 100
+    internet_churn = (
+        df.groupby("InternetService")["Churn"]
+        .mean()
+        .sort_values(ascending=False)
+        * 100
     )
 
     st.bar_chart(
-        plan_churn
+        internet_churn
     )
 
 
-    # Churn by payment method
-
     st.subheader(
-        "Churn Rate by Payment Method"
+        "Churn by Payment Method"
     )
 
     payment_churn = (
-        df.groupby("payment_method")["churn"]
-        .mean() * 100
+        df.groupby("PaymentMethod")["Churn"]
+        .mean()
+        .sort_values(ascending=False)
+        * 100
     )
 
     st.bar_chart(
@@ -851,65 +591,60 @@ elif page == "📈 Exploratory Data Analysis":
     )
 
 
-    # Monthly charges
-
-    st.subheader(
-        "Monthly Charges Distribution"
-    )
-
-    fig, ax = plt.subplots()
-
-    ax.hist(
-        df["monthly_charges"],
-        bins=20
-    )
-
-    ax.set_xlabel(
-        "Monthly Charges"
-    )
-
-    ax.set_ylabel(
-        "Number of Customers"
-    )
-
-    ax.set_title(
-        "Distribution of Monthly Charges"
-    )
-
-    st.pyplot(fig)
+    col1, col2 = st.columns(2)
 
 
-    # Tenure
+    with col1:
 
-    st.subheader(
-        "Tenure Distribution"
-    )
+        st.subheader(
+            "Monthly Charges"
+        )
 
-    fig, ax = plt.subplots()
+        fig, ax = plt.subplots()
 
-    ax.hist(
-        df["tenure_months"],
-        bins=20
-    )
+        ax.hist(
+            df["MonthlyCharges"],
+            bins=25
+        )
 
-    ax.set_xlabel(
-        "Tenure in Months"
-    )
+        ax.set_xlabel(
+            "Monthly Charges"
+        )
 
-    ax.set_ylabel(
-        "Number of Customers"
-    )
+        ax.set_ylabel(
+            "Customers"
+        )
 
-    ax.set_title(
-        "Customer Tenure Distribution"
-    )
-
-    st.pyplot(fig)
+        st.pyplot(fig)
 
 
-# ============================================================
-# 4. MODEL COMPARISON
-# ============================================================
+    with col2:
+
+        st.subheader(
+            "Customer Tenure"
+        )
+
+        fig, ax = plt.subplots()
+
+        ax.hist(
+            df["tenure"],
+            bins=20
+        )
+
+        ax.set_xlabel(
+            "Tenure (Months)"
+        )
+
+        ax.set_ylabel(
+            "Customers"
+        )
+
+        st.pyplot(fig)
+
+
+# =========================================================
+# MODEL COMPARISON
+# =========================================================
 
 elif page == "🤖 Model Comparison":
 
@@ -917,31 +652,31 @@ elif page == "🤖 Model Comparison":
         "🤖 Machine Learning Model Comparison"
     )
 
-    st.write(
-        "Four classification algorithms were trained "
-        "and compared using multiple evaluation metrics."
-    )
 
+    display_df = results_df.copy()
 
-    # Results table
-
-    display_results = results_df.copy()
 
     for column in [
+
         "Accuracy",
+
         "Precision",
+
         "Recall",
+
         "F1 Score",
+
         "ROC-AUC"
+
     ]:
 
-        display_results[column] = (
-            display_results[column] * 100
+        display_df[column] = (
+            display_df[column] * 100
         ).round(2)
 
 
     st.dataframe(
-        display_results,
+        display_df,
         use_container_width=True
     )
 
@@ -950,43 +685,38 @@ elif page == "🤖 Model Comparison":
         "ROC-AUC Comparison"
     )
 
-    chart_data = results_df.set_index(
-        "Model"
-    )["ROC-AUC"]
-
     st.bar_chart(
-        chart_data
+        results_df.set_index("Model")[
+            "ROC-AUC"
+        ]
     )
 
 
     st.success(
-        f"Best performing model based on ROC-AUC: "
-        f"{best_model_name}"
+        f"Best performing model: {best_model_name}"
     )
 
 
-    # Confusion matrix
+    # Confusion Matrix
 
-    st.subheader(
-        "Confusion Matrix – Best Model"
-    )
-
-    best_predictions = best_model.predict(
+    predictions = best_model.predict(
         X_test
     )
 
     cm = confusion_matrix(
         y_test,
-        best_predictions
+        predictions
     )
+
+
+    st.subheader(
+        "Confusion Matrix"
+    )
+
 
     fig, ax = plt.subplots()
 
     ax.imshow(cm)
-
-    ax.set_title(
-        f"Confusion Matrix - {best_model_name}"
-    )
 
     ax.set_xlabel(
         "Predicted"
@@ -996,16 +726,8 @@ elif page == "🤖 Model Comparison":
         "Actual"
     )
 
-    ax.set_xticks([0, 1])
-
-    ax.set_yticks([0, 1])
-
-    ax.set_xticklabels(
-        ["Retained", "Churned"]
-    )
-
-    ax.set_yticklabels(
-        ["Retained", "Churned"]
+    ax.set_title(
+        f"Confusion Matrix - {best_model_name}"
     )
 
 
@@ -1025,63 +747,36 @@ elif page == "🤖 Model Comparison":
     st.pyplot(fig)
 
 
-    # Classification report
-
-    st.subheader(
-        "Classification Report"
-    )
-
-    report = classification_report(
-        y_test,
-        best_predictions,
-        output_dict=True,
-        zero_division=0
-    )
-
-    report_df = pd.DataFrame(
-        report
-    ).transpose()
-
-    st.dataframe(
-        report_df,
-        use_container_width=True
-    )
-
-
-# ============================================================
-# 5. FEATURE IMPORTANCE
-# ============================================================
+# =========================================================
+# FEATURE IMPORTANCE
+# =========================================================
 
 elif page == "🔍 Feature Importance":
 
     st.header(
-        "🔍 Important Features"
+        "🔍 Feature Importance"
     )
+
 
     st.write(
-        "Permutation importance estimates how much each "
-        "original feature contributes to model performance."
+        "Permutation importance shows which original customer attributes have the greatest impact on model performance."
     )
 
 
-    with st.spinner(
-        "Calculating feature importance..."
-    ):
+    importance = permutation_importance(
 
-        importance_result = permutation_importance(
+        best_model,
 
-            best_model,
+        X_test,
 
-            X_test,
+        y_test,
 
-            y_test,
+        n_repeats=5,
 
-            n_repeats=5,
+        random_state=42,
 
-            random_state=42,
-
-            scoring="roc_auc"
-        )
+        scoring="roc_auc"
+    )
 
 
     importance_df = pd.DataFrame({
@@ -1090,14 +785,10 @@ elif page == "🔍 Feature Importance":
             X_test.columns,
 
         "Importance":
-            importance_result.importances_mean
-    })
+            importance.importances_mean
 
-
-    importance_df = importance_df.sort_values(
-
-        by="Importance",
-
+    }).sort_values(
+        "Importance",
         ascending=False
     )
 
@@ -1109,46 +800,37 @@ elif page == "🔍 Feature Importance":
 
 
     st.subheader(
-        "Feature Importance Chart"
+        "Top Churn Drivers"
     )
 
 
-    chart_df = (
-        importance_df
-        .head(10)
+    st.bar_chart(
+        importance_df.head(10)
         .set_index("Feature")
     )
 
-    st.bar_chart(
-        chart_df
-    )
 
-
-# ============================================================
-# 6. CHURN PREDICTION
-# ============================================================
+# =========================================================
+# CHURN PREDICTION
+# =========================================================
 
 elif page == "🔮 Churn Prediction":
 
     st.header(
-        "🔮 Customer Churn Prediction"
+        "🔮 Individual Customer Churn Prediction"
     )
+
 
     st.write(
-        "Enter customer details to estimate the probability "
-        "that the customer may churn."
+        "Enter customer details to estimate the probability of churn."
     )
 
 
-    input_values = {}
+    input_data = {}
 
 
     col1, col2 = st.columns(2)
 
-
-    # --------------------------------------------------------
-    # CATEGORICAL INPUTS
-    # --------------------------------------------------------
 
     with col1:
 
@@ -1159,25 +841,17 @@ elif page == "🔮 Churn Prediction":
                 .dropna()
                 .astype(str)
                 .unique()
-                .tolist()
             )
 
-            if len(options) > 0:
+            input_data[column] = st.selectbox(
 
-                input_values[column] = st.selectbox(
+                column.replace(
+                    "_", " "
+                ).title(),
 
-                    column.replace(
-                        "_",
-                        " "
-                    ).title(),
+                options
+            )
 
-                    options
-                )
-
-
-    # --------------------------------------------------------
-    # NUMERICAL INPUTS
-    # --------------------------------------------------------
 
     with col2:
 
@@ -1195,201 +869,103 @@ elif page == "🔮 Churn Prediction":
                 df[column].median()
             )
 
+            input_data[column] = st.number_input(
 
-            if column == "tenure_months":
+                column.replace(
+                    "_", " "
+                ).title(),
 
-                input_values[column] = st.number_input(
+                min_value=minimum,
 
-                    column.replace(
-                        "_",
-                        " "
-                    ).title(),
+                max_value=maximum,
 
-                    min_value=max(
-                        1.0,
-                        minimum
-                    ),
-
-                    max_value=max(
-                        maximum,
-                        1.0
-                    ),
-
-                    value=max(
-                        median,
-                        1.0
-                    )
-                )
-
-            else:
-
-                input_values[column] = st.number_input(
-
-                    column.replace(
-                        "_",
-                        " "
-                    ).title(),
-
-                    min_value=minimum,
-
-                    max_value=maximum,
-
-                    value=median
-                )
-
-
-    st.divider()
+                value=median
+            )
 
 
     if st.button(
-        "🔮 Predict Customer Churn",
+        "🔮 Predict Churn",
         use_container_width=True
     ):
 
-        customer_input = pd.DataFrame(
-            [input_values]
+        customer = pd.DataFrame(
+            [input_data]
         )
-
-
-        # Prediction
-
-        prediction = best_model.predict(
-            customer_input
-        )[0]
 
 
         probability = best_model.predict_proba(
-            customer_input
+            customer
         )[0][1]
 
 
-        probability_percent = (
-            probability * 100
+        prediction = int(
+            probability >= 0.5
         )
 
 
-        # Risk
-
         if probability < 0.30:
 
-            risk = "LOW RISK"
+            risk = "Low Risk"
 
         elif probability < 0.70:
 
-            risk = "MEDIUM RISK"
+            risk = "Medium Risk"
 
         else:
 
-            risk = "HIGH RISK"
+            risk = "High Risk"
 
 
-        st.divider()
+        col1, col2, col3 = st.columns(3)
 
 
-        result_col1, result_col2, result_col3 = st.columns(3)
+        col1.metric(
+            "Churn Probability",
+            f"{probability * 100:.2f}%"
+        )
 
 
-        with result_col1:
-
-            st.metric(
-                "Churn Probability",
-                f"{probability_percent:.2f}%"
-            )
+        col2.metric(
+            "Risk Level",
+            risk
+        )
 
 
-        with result_col2:
+        col3.metric(
 
-            st.metric(
-                "Risk Level",
-                risk
-            )
+            "Prediction",
 
-
-        with result_col3:
-
-            st.metric(
-                "Prediction",
-                "Likely Churn" if prediction == 1
-                else "Likely Stay"
-            )
+            "Likely Churn"
+            if prediction == 1
+            else "Likely Stay"
+        )
 
 
-        # Recommendation
-
-        if probability >= 0.70:
+        if risk == "High Risk":
 
             st.error(
-                "⚠️ High-risk customer detected."
+                "⚠️ High-risk customer. "
+                "Proactive retention action is recommended."
             )
 
-            st.subheader(
-                "Recommended Action"
-            )
-
-            st.write(
-                """
-                • Contact the customer proactively
-
-                • Offer a personalized retention plan
-
-                • Investigate recent support issues
-
-                • Consider a suitable loyalty offer
-
-                • Encourage product engagement
-                """
-            )
-
-
-        elif probability >= 0.30:
+        elif risk == "Medium Risk":
 
             st.warning(
-                "⚠️ Medium-risk customer detected."
+                "⚠️ Medium-risk customer. "
+                "Monitor engagement and activity."
             )
-
-            st.subheader(
-                "Recommended Action"
-            )
-
-            st.write(
-                """
-                • Monitor customer activity
-
-                • Send targeted engagement messages
-
-                • Track support requests
-
-                • Offer relevant product information
-                """
-            )
-
 
         else:
 
             st.success(
-                "✅ Low-risk customer detected."
-            )
-
-            st.subheader(
-                "Recommended Action"
-            )
-
-            st.write(
-                """
-                • Maintain normal engagement
-
-                • Continue quality customer support
-
-                • Encourage regular product usage
-
-                • Consider loyalty benefits
-                """
+                "✅ Low-risk customer. "
+                "Continue normal engagement."
             )
 
 
-# ============================================================
-# 7. RISK SEGMENTATION
-# ============================================================
+# =========================================================
+# RISK SEGMENTATION
+# =========================================================
 
 elif page == "⚠️ Risk Segmentation":
 
@@ -1397,100 +973,73 @@ elif page == "⚠️ Risk Segmentation":
         "⚠️ Customer Risk Segmentation"
     )
 
-    st.write(
-        "Customers are divided into risk groups using "
-        "their predicted churn probabilities."
-    )
 
-
-    all_probabilities = best_model.predict_proba(
+    probabilities = best_model.predict_proba(
         X
     )[:, 1]
 
 
-    risk_df = df[
-        [
-            "customer_id"
-        ]
-    ].copy()
+    risk_df = pd.DataFrame({
+
+        "Customer":
+            range(1, len(df) + 1),
+
+        "Churn Probability (%)":
+            probabilities * 100
+
+    })
 
 
-    risk_df["Churn Probability"] = (
-        all_probabilities
+    risk_df["Risk Level"] = np.where(
+
+        probabilities < 0.30,
+
+        "Low Risk",
+
+        np.where(
+
+            probabilities < 0.70,
+
+            "Medium Risk",
+
+            "High Risk"
+        )
     )
 
 
-    risk_df["Churn Probability (%)"] = (
-        all_probabilities * 100
-    ).round(2)
+    counts = risk_df[
+        "Risk Level"
+    ].value_counts()
 
-
-    def assign_risk(probability):
-
-        if probability < 0.30:
-
-            return "Low Risk"
-
-        elif probability < 0.70:
-
-            return "Medium Risk"
-
-        else:
-
-            return "High Risk"
-
-
-    risk_df["Risk Level"] = (
-        risk_df["Churn Probability"]
-        .apply(assign_risk)
-    )
-
-
-    risk_counts = (
-        risk_df["Risk Level"]
-        .value_counts()
-    )
-
-
-    # Metrics
 
     col1, col2, col3 = st.columns(3)
 
 
-    with col1:
-
-        st.metric(
-            "🟢 Low Risk",
-            risk_counts.get(
-                "Low Risk",
-                0
-            )
+    col1.metric(
+        "🟢 Low Risk",
+        counts.get(
+            "Low Risk",
+            0
         )
+    )
 
 
-    with col2:
-
-        st.metric(
-            "🟡 Medium Risk",
-            risk_counts.get(
-                "Medium Risk",
-                0
-            )
+    col2.metric(
+        "🟡 Medium Risk",
+        counts.get(
+            "Medium Risk",
+            0
         )
+    )
 
 
-    with col3:
-
-        st.metric(
-            "🔴 High Risk",
-            risk_counts.get(
-                "High Risk",
-                0
-            )
+    col3.metric(
+        "🔴 High Risk",
+        counts.get(
+            "High Risk",
+            0
         )
-
-
-    st.divider()
+    )
 
 
     st.subheader(
@@ -1499,94 +1048,52 @@ elif page == "⚠️ Risk Segmentation":
 
 
     st.bar_chart(
-        risk_counts
+        counts
     )
 
 
     st.subheader(
-        "Risk Segmentation Rules"
+        "Customer Risk Report"
     )
 
 
-    segmentation = pd.DataFrame({
-
-        "Probability":
-            [
-                "0–30%",
-                "30–70%",
-                "70–100%"
-            ],
-
-        "Risk":
-            [
-                "Low",
-                "Medium",
-                "High"
-            ],
-
-        "Recommended Action":
-            [
-                "Normal engagement",
-                "Monitor and targeted engagement",
-                "Proactive retention action"
-            ]
-    })
-
-
-    st.dataframe(
-        segmentation,
-        use_container_width=True,
-        hide_index=True
-    )
-
-
-    st.subheader(
-        "Customer Risk List"
+    risk_df["Churn Probability (%)"] = (
+        risk_df["Churn Probability (%)"]
+        .round(2)
     )
 
 
     st.dataframe(
         risk_df.sort_values(
-            "Churn Probability",
+            "Churn Probability (%)",
             ascending=False
         ),
         use_container_width=True
     )
 
 
-    # Download risk report
-
-    csv = risk_df.to_csv(
-        index=False
-    ).encode("utf-8")
-
-
     st.download_button(
 
         "⬇️ Download Risk Report",
 
-        data=csv,
+        risk_df.to_csv(
+            index=False
+        ).encode("utf-8"),
 
-        file_name="customer_risk_segments.csv",
+        "customer_risk_report.csv",
 
-        mime="text/csv"
+        "text/csv"
     )
 
 
-# ============================================================
-# 8. BUSINESS RECOMMENDATIONS
-# ============================================================
+# =========================================================
+# BUSINESS RECOMMENDATIONS
+# =========================================================
 
 elif page == "💡 Business Recommendations":
 
     st.header(
         "💡 Business Recommendations"
-    )
-
-    st.write(
-        "The purpose of churn prediction is not only "
-        "to predict customers who may leave, but also "
-        "to help the business take preventive action."
     )
 
 
@@ -1596,19 +1103,15 @@ elif page == "💡 Business Recommendations":
 
     st.write(
         """
-        **Probability: 70–100%**
+        • Offer personalized retention plans.
 
-        Recommended actions:
+        • Contact customers with repeated service issues.
 
-        • Proactive customer support
+        • Provide targeted discounts where appropriate.
 
-        • Personalized retention offers
+        • Encourage longer-term contracts.
 
-        • Investigate customer complaints
-
-        • Review payment-related problems
-
-        • Provide loyalty incentives
+        • Prioritize customers with high churn probability.
         """
     )
 
@@ -1619,19 +1122,13 @@ elif page == "💡 Business Recommendations":
 
     st.write(
         """
-        **Probability: 30–70%**
+        • Monitor customer engagement.
 
-        Recommended actions:
+        • Send personalized communication.
 
-        • Monitor customer activity
+        • Track support interactions.
 
-        • Send targeted engagement campaigns
-
-        • Track support tickets
-
-        • Encourage product usage
-
-        • Provide relevant offers
+        • Encourage greater product/service usage.
         """
     )
 
@@ -1642,17 +1139,13 @@ elif page == "💡 Business Recommendations":
 
     st.write(
         """
-        **Probability: 0–30%**
+        • Maintain service quality.
 
-        Recommended actions:
+        • Encourage loyalty.
 
-        • Maintain normal engagement
+        • Promote long-term plans.
 
-        • Continue good customer service
-
-        • Encourage long-term subscriptions
-
-        • Offer loyalty benefits
+        • Continue regular engagement.
         """
     )
 
@@ -1660,30 +1153,19 @@ elif page == "💡 Business Recommendations":
     st.divider()
 
 
-    st.subheader(
-        "🎯 Business Objective"
-    )
-
     st.info(
-        "Use machine learning predictions to identify "
-        "customers at risk early enough for the business "
-        "to take preventive retention actions."
+        "The purpose of churn prediction is not only to identify customers likely to leave, but to provide actionable insights for improving customer retention."
     )
 
 
-# ============================================================
-# 9. CUSTOMER DATA
-# ============================================================
+# =========================================================
+# CUSTOMER DATA
+# =========================================================
 
 elif page == "📋 Customer Data":
 
     st.header(
         "📋 Customer Dataset"
-    )
-
-    st.write(
-        "Explore the cleaned customer dataset used "
-        "for analysis and machine learning."
     )
 
 
@@ -1695,10 +1177,10 @@ elif page == "📋 Customer Data":
     if search:
 
         filtered_df = df[
-            df.astype(str)
-            .apply(
+            df.astype(str).apply(
 
                 lambda row:
+
                 row.str.contains(
                     search,
                     case=False,
@@ -1720,26 +1202,23 @@ elif page == "📋 Customer Data":
     )
 
 
-    csv = df.to_csv(
-        index=False
-    ).encode("utf-8")
-
-
     st.download_button(
 
-        "⬇️ Download Cleaned Dataset",
+        "⬇️ Download Dataset",
 
-        data=csv,
+        df.to_csv(
+            index=False
+        ).encode("utf-8"),
 
-        file_name="cleaned_customer_churn.csv",
+        "telco_customer_churn_cleaned.csv",
 
-        mime="text/csv"
+        "text/csv"
     )
 
 
-# ============================================================
+# =========================================================
 # FOOTER
-# ============================================================
+# =========================================================
 
 st.divider()
 
